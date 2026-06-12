@@ -167,8 +167,14 @@ public final class Flux2UpDecoderBlock2D: Module {
 
     public func callAsFunction(_ hiddenStates: MLXArray) -> MLXArray {
         var h = hiddenStates
-        for resnet in resnets { h = resnet(h) }
-        for upsampler in upsamplers { h = upsampler(h) }
+        for resnet in resnets {
+            h = resnet(h)
+            eval(h)  // full-res resnets hold multi-GB of live intermediates
+        }
+        for upsampler in upsamplers {
+            h = upsampler(h)
+            eval(h)
+        }
         return h
     }
 }
@@ -213,9 +219,16 @@ public final class Flux2Decoder: Module {
         let dtype = hiddenStates.dtype
         var h = hiddenStates.transposed(0, 2, 3, 1)
         h = convIn(h)
+        eval(h)  // stage checkpoints: the whole decode as ONE lazy graph holds ~10-15 GB
+                 // of live intermediates at 1024² (the dominant peak in both Lens and
+                 // ERNIE pipelines); per-stage eval bounds the high-water cheaply.
         h = h.transposed(0, 3, 1, 2)
         h = midBlock(h)
-        for upBlock in upBlocks { h = upBlock(h) }
+        eval(h)
+        for upBlock in upBlocks {
+            h = upBlock(h)
+            eval(h)
+        }
         h = h.transposed(0, 2, 3, 1)
         h = convNormOut(h.asType(.float32)).asType(dtype)
         h = silu(h)
