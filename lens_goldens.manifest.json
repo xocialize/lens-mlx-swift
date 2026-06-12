@@ -1,0 +1,94 @@
+{
+  "config": {
+    "prompt": "A scenic landscape with a serene lake and snow-capped mountains.",
+    "negative": "",
+    "height": 512,
+    "width": 512,
+    "steps": 4,
+    "cfg": 4.0,
+    "seed": 42,
+    "device": "cpu",
+    "dit_dtype": "float32",
+    "encoder_dtype": "bfloat16"
+  },
+  "tensors": {
+    "text_feat_0": {
+      "shape": [
+        1,
+        35,
+        2880
+      ],
+      "dtype": "float32"
+    },
+    "text_feat_1": {
+      "shape": [
+        1,
+        35,
+        2880
+      ],
+      "dtype": "float32"
+    },
+    "text_feat_2": {
+      "shape": [
+        1,
+        35,
+        2880
+      ],
+      "dtype": "float32"
+    },
+    "text_feat_3": {
+      "shape": [
+        1,
+        35,
+        2880
+      ],
+      "dtype": "float32"
+    },
+    "text_mask": {
+      "shape": [
+        1,
+        35
+      ],
+      "dtype": "int32"
+    },
+    "dit_in_hidden": {
+      "shape": [
+        2,
+        1024,
+        128
+      ],
+      "dtype": "float32"
+    },
+    "dit_in_timestep": {
+      "shape": [
+        2
+      ],
+      "dtype": "float32"
+    },
+    "dit_out_noise": {
+      "shape": [
+        2,
+        1024,
+        128
+      ],
+      "dtype": "float32"
+    },
+    "final_latent": {
+      "shape": [
+        1,
+        1024,
+        128
+      ],
+      "dtype": "float32"
+    },
+    "decoded_image": {
+      "shape": [
+        1,
+        3,
+        512,
+        512
+      ],
+      "dtype": "float32"
+    }
+  }
+}
