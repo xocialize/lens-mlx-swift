@@ -170,3 +170,10 @@ public final class LensT2IPackage: ModelPackage {
         return out as Data
     }
 }
+
+extension LensT2IPackage {
+    /// The author one-liner the engine registers.
+    public nonisolated static var registration: PackageRegistration {
+        .of(LensT2IPackage.self)
+    }
+}
