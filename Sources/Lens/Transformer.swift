@@ -458,10 +458,11 @@ public final class LensTransformer2DModel: Module {
         let normed = (0..<txtNorm.count).map { txtNorm[$0](encoderHiddenStates[$0]) }
         var encoder = concatenated(normed, axis: -1)
 
-        let attentionMask = Self.buildJointAttentionMask(
-            textMask: encoderHiddenStatesMask, imgLen: imgLen)
-
         var hidden = imgIn(hiddenStates)
+        // SDPA requires the additive mask to promote to the stream dtype (bf16 runs).
+        let attentionMask = Self.buildJointAttentionMask(
+            textMask: encoderHiddenStatesMask, imgLen: imgLen
+        ).asType(hidden.dtype)
         encoder = txtIn(encoder)
         let temb = timeTextEmbed(timestep.asType(hidden.dtype), hidden)
         let imageRotaryEmb = posEmbed(videoFHW: imgShape, txtSeqLen: textSeqLen)
