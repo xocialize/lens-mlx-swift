@@ -12,6 +12,7 @@
 import Foundation
 import MLX
 import MLXNN
+import Flux2VAE
 
 public enum LensWeights {
 
@@ -90,29 +91,11 @@ public enum LensWeights {
         return model
     }
 
-    /// Load the FLUX.2 VAE (decoder-only) from a diffusers `vae/` snapshot.
+    /// Load the FLUX.2 VAE (decoder-only) from a diffusers `vae/` snapshot. The VAE now lives in the
+    /// neutral `Flux2VAE` package (shared with other t2i backers); this stays as a convenience
+    /// re-export so existing Lens callers don't change.
     public static func loadVAE(directory: URL, dtype: DType = .float32) throws -> Flux2VAE {
-        let vae = Flux2VAE()
-        var state: [String: MLXArray] = [:]
-        for (rawKey, rawValue) in try loadAllArrays(directory: directory) {
-            if rawKey.hasSuffix("num_batches_tracked") { continue }
-            // Decoder-only: skip the encoder tower + its quant projection.
-            if rawKey.hasPrefix("encoder.") || rawKey.hasPrefix("quant_conv.") { continue }
-            var k = rawKey.replacingOccurrences(of: ".to_out.0.", with: ".to_out.")
-            var v = rawValue
-            if v.ndim == 4 {  // conv weight: PT (O,I,kH,kW) -> MLX (O,kH,kW,I)
-                v = v.transposed(0, 2, 3, 1)
-            }
-            // bn stats stay fp32 regardless of requested dtype (de-norm precision).
-            if k.hasPrefix("bn.") {
-                v = v.asType(.float32)
-            } else {
-                v = v.asType(dtype)
-            }
-            state[k] = v
-        }
-        try verifyAndLoad(model: vae, weights: state, label: "VAE")
-        return vae
+        try Flux2VAEWeights.loadVAE(directory: directory, dtype: dtype)
     }
 
     /// Two-way strict load (workspace discipline): all module keys must be filled and

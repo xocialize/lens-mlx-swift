@@ -6,6 +6,7 @@
 import Foundation
 import MLX
 import MLXRandom
+import Flux2VAE
 
 // Chat template constants used by the Lens text encoder (verbatim from upstream).
 public enum LensChatTemplate {
