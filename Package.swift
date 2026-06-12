@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 // lens-mlx-swift — Swift/MLX mirror of the completed Python lens-mlx port
 // (microsoft/Lens, MIT: GPT-OSS-conditioned 3.8B t2i DiT + FLUX.2 VAE decode).
 // Reference = the Python MLX port at /Volumes/DEV_ARCHIVE/lens-mlx (DiT cosine
@@ -10,16 +10,21 @@ import PackageDescription
 let package = Package(
     name: "Lens",
     platforms: [
-        .macOS(.v15)
+        .macOS(.v26)
     ],
     products: [
         .library(name: "Lens", targets: ["Lens"]),
+        // MLXEngine wrapper: the conformant `textToImage` ModelPackage over LensGenerator.
+        .library(name: "MLXLens", targets: ["MLXLens"]),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.30.0"),
         // GPTOSS (text encoder backbone) + tokenizer plumbing.
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", from: "3.31.3"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.6"),
+        // MLXEngine contract (MLXToolKit) for the wrapper target only; the core `Lens`
+        // target stays engine-agnostic.
+        .package(path: "../mlx-engine-swift"),
     ],
     targets: [
         .target(
@@ -35,10 +40,23 @@ let package = Package(
             ],
             path: "Sources/Lens"
         ),
+        .target(
+            name: "MLXLens",
+            dependencies: [
+                "Lens",
+                .product(name: "MLXToolKit", package: "mlx-engine-swift"),
+            ],
+            path: "Sources/MLXLens"
+        ),
         .testTarget(
             name: "LensTests",
             dependencies: ["Lens"],
             path: "Tests/LensTests"
+        ),
+        .testTarget(
+            name: "MLXLensTests",
+            dependencies: ["MLXLens"],
+            path: "Tests/MLXLensTests"
         ),
     ]
 )
