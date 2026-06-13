@@ -26,7 +26,7 @@ let package = Package(
         .package(url: "https://github.com/xocialize/flux2-vae-mlx-swift", from: "0.1.0"),
         // MLXEngine contract (MLXToolKit) for the wrapper target only; the core `Lens`
         // target stays engine-agnostic.
-        .package(path: "../mlx-engine-swift"),
+        .package(url: "https://github.com/xocialize/mlx-engine-swift", from: "0.3.0"),
     ],
     targets: [
         .target(
