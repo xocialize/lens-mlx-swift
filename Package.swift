@@ -22,9 +22,8 @@ let package = Package(
         // GPTOSS (text encoder backbone) + tokenizer plumbing.
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", from: "3.31.3"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.6"),
-        // FLUX.2 VAE — extracted to a neutral package so other t2i backers (ERNIE-Image)
-        // can share it without depending on the Lens model package.
-        .package(path: "../flux2-vae-mlx-swift"),
+        // FLUX.2 VAE — neutral package shared with other t2i backers (ERNIE-Image); net dep.
+        .package(url: "https://github.com/xocialize/flux2-vae-mlx-swift", from: "0.1.0"),
         // MLXEngine contract (MLXToolKit) for the wrapper target only; the core `Lens`
         // target stays engine-agnostic.
         .package(path: "../mlx-engine-swift"),
