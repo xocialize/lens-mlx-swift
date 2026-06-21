@@ -14,6 +14,18 @@ import MLXToolKit
 struct LensCLI {
     static func main() async throws {
         let a = CommandLine.arguments
+
+        // `swift run lens-cli manifest` — print both package manifests (no weights/GPU).
+        if a.count > 1, a[1] == "manifest" {
+            for (label, m) in [("Lens", LensT2IPackage.manifest),
+                               ("Lens-Turbo", LensTurboT2IPackage.manifest)] {
+                print("[\(label)] sourceRepo=\(m.provenance.sourceRepo) "
+                    + "surfaces=\(m.surfaces.map(\.name)) "
+                    + "license=\(m.license.weightLicense)/\(m.license.portCodeLicense)")
+            }
+            return
+        }
+
         let ditRepo = a.count > 1 ? a[1] : "/Volumes/DEV_ARCHIVE/lens-mlx/build/Lens-Turbo-3.8B-bf16"
         let steps = a.count > 2 ? Int(a[2])! : 4
         let size = a.count > 3 ? Int(a[3])! : 512
