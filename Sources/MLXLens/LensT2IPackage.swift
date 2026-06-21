@@ -22,6 +22,11 @@ public struct LensConfiguration: PackageConfiguration, ModelStorable {
     public var lensSnapshotPath: String
     /// GPT-OSS encoder dir (dense bf16 or MXFP4 HF layout — sanitize handles both).
     public var encoderPath: String
+    /// Optional CONVERTED mlx DiT repo (e.g. a downloaded `mlx-community/Lens-3.8B-4bit`
+    /// or `Lens-Turbo-3.8B-bf16`). When set, the DiT loads via `loadDiTRepo` (already
+    /// sanitized + optionally quantized) instead of the PT `transformer/` snapshot, and
+    /// `ditDTypeBF16` is ignored. tokenizer/VAE still come from `lensSnapshotPath`.
+    public var ditRepoPath: String?
     /// DiT precision when loading from the PT snapshot (`bfloat16` production default).
     public var ditDTypeBF16: Bool
     public var defaultSteps: Int
@@ -31,6 +36,7 @@ public struct LensConfiguration: PackageConfiguration, ModelStorable {
     public init(
         lensSnapshotPath: String = "/Volumes/DEV_ARCHIVE/lens-mlx/weights/Lens",
         encoderPath: String = "/Volumes/DEV_ARCHIVE/lens-mlx/weights/Lens-encoder-mlx-bf16",
+        ditRepoPath: String? = nil,
         ditDTypeBF16: Bool = true,
         defaultSteps: Int = 20,
         defaultGuidanceScale: Float = 4.0,
@@ -38,14 +44,27 @@ public struct LensConfiguration: PackageConfiguration, ModelStorable {
     ) {
         self.lensSnapshotPath = lensSnapshotPath
         self.encoderPath = encoderPath
+        self.ditRepoPath = ditRepoPath
         self.ditDTypeBF16 = ditDTypeBF16
         self.defaultSteps = defaultSteps
         self.defaultGuidanceScale = defaultGuidanceScale
         self.modelsRootDirectory = modelsRootDirectory
     }
 
+    /// Lens-Turbo defaults: a converted Turbo DiT repo + 4-step / guidance-1.0 sampling.
+    /// Reuses the base snapshot for tokenizer + VAE and the same encoder.
+    public static func turbo(
+        lensSnapshotPath: String = "/Volumes/DEV_ARCHIVE/lens-mlx/weights/Lens",
+        encoderPath: String = "/Volumes/DEV_ARCHIVE/lens-mlx/weights/Lens-encoder-mlx-bf16",
+        ditRepoPath: String
+    ) -> LensConfiguration {
+        LensConfiguration(
+            lensSnapshotPath: lensSnapshotPath, encoderPath: encoderPath,
+            ditRepoPath: ditRepoPath, defaultSteps: 4, defaultGuidanceScale: 1.0)
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case lensSnapshotPath, encoderPath, ditDTypeBF16, defaultSteps, defaultGuidanceScale
+        case lensSnapshotPath, encoderPath, ditRepoPath, ditDTypeBF16, defaultSteps, defaultGuidanceScale
     }
 }
 
@@ -105,12 +124,19 @@ public final class LensT2IPackage: ModelPackage {
         guard generator == nil else { return }
         let snapshot = URL(fileURLWithPath: configuration.lensSnapshotPath)
         guard FileManager.default.fileExists(
-            atPath: snapshot.appendingPathComponent("transformer").path)
+            atPath: snapshot.appendingPathComponent("vae").path)
         else { throw LensT2IError.unreadableSnapshot(snapshot.path) }
 
-        let transformer = try LensWeights.loadDiTFromPT(
-            directory: snapshot.appendingPathComponent("transformer"),
-            dtype: configuration.ditDTypeBF16 ? .bfloat16 : .float32)
+        // DiT: a converted mlx repo (bf16/int4/int8, incl. Lens-Turbo) when configured,
+        // else the PT transformer/ snapshot. Both paths materialize weights on load.
+        let transformer: LensTransformer2DModel
+        if let ditRepoPath = configuration.ditRepoPath {
+            transformer = try LensWeights.loadDiTRepo(directory: URL(fileURLWithPath: ditRepoPath))
+        } else {
+            transformer = try LensWeights.loadDiTFromPT(
+                directory: snapshot.appendingPathComponent("transformer"),
+                dtype: configuration.ditDTypeBF16 ? .bfloat16 : .float32)
+        }
         let vae = try LensWeights.loadVAE(directory: snapshot.appendingPathComponent("vae"))
         let encoder = try LensGptOssEncoder.fromPretrained(
             directory: URL(fileURLWithPath: configuration.encoderPath))

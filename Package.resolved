@@ -1,5 +1,5 @@
 {
-  "originHash" : "c5b0e07eb071dbb16472122a2112db5e8f3f5a8961b83ff42c797cd9a036b51b",
+  "originHash" : "5bc334254a84af898cc2c1fc94a7d20bde9467ab26729459ee35827bc345c378",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -8,6 +8,24 @@
       "state" : {
         "revision" : "a3a85a85214caf642abaa96ae664e4c772a59f6e",
         "version" : "1.4.1"
+      }
+    },
+    {
+      "identity" : "flux2-vae-mlx-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/xocialize/flux2-vae-mlx-swift",
+      "state" : {
+        "revision" : "889223384f656efa481fd8e726dcffb3681554ef",
+        "version" : "0.1.0"
+      }
+    },
+    {
+      "identity" : "mlx-engine-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/xocialize/mlx-engine-swift",
+      "state" : {
+        "revision" : "3505b09cc7fad40befe0e375437005c6107b0a89",
+        "version" : "0.8.0"
       }
     },
     {
