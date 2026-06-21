@@ -7,7 +7,12 @@ decode. Ships MLXEngine's **`textToImage`** capability.
 Two products:
 - **`Lens`** — the engine-agnostic generator core (DiT + FLUX.2 VAE decode via the neutral
   `flux2-vae-mlx-swift` package).
-- **`MLXLens`** — the conformant MLXEngine wrapper (`LensT2IPackage`, `textToImage`).
+- **`MLXLens`** — the conformant MLXEngine wrappers: `LensT2IPackage` (20-step) and
+  `LensTurboT2IPackage` (distilled 4-step / cfg 1.0, surface `lens-turbo-t2i`), both `textToImage`.
+
+**Lens-Turbo** is a weights-only variant (architecture-identical): load a converted Turbo repo via
+`LensConfiguration.turbo(ditRepoPath:)` — or register `LensTurboT2IPackage` for a distinct
+engine-selectable PackageID. mlx-community: `Lens-Turbo-3.8B-{bf16,4bit,8bit}`.
 
 > **Status: complete · wrapped · in-app validated.** Parity vs the PT goldens: DiT max_abs
 > 6.9e-06 (cosine 1.0000) · VAE decode 120 dB · encoder per-layer ≥0.997 (structure sentinel
