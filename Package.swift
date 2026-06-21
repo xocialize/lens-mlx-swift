@@ -51,6 +51,16 @@ let package = Package(
             ],
             path: "Sources/MLXLens"
         ),
+        // GPU validation CLI (`swift run lens-cli`) — the reliable GPU-gate path; drives the
+        // real ModelPackage surface (register→load→run) for base or Turbo via ditRepoPath.
+        .executableTarget(
+            name: "lens-cli",
+            dependencies: [
+                "MLXLens",
+                .product(name: "MLXToolKit", package: "mlx-engine-swift"),
+            ],
+            path: "Sources/LensCLI"
+        ),
         .testTarget(
             name: "LensTests",
             dependencies: ["Lens"],
