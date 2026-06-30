@@ -52,7 +52,7 @@ final class PECrossDemoTests: XCTestCase {
             transformer: transformer, vae: vae, encoder: encoder, tokenizer: tokenizer)
 
         let start = Date()
-        let (pixels, h, w) = try generator.generate(
+        let (pixels, h, w) = try await generator.generate(
             prompt: Self.enhanced, height: 1024, width: 1024,
             numInferenceSteps: 20, guidanceScale: 4.0, seed: 7)
         print("lens render \(w)x\(h) in \(Date().timeIntervalSince(start))s")

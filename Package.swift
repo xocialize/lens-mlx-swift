@@ -47,6 +47,9 @@ let package = Package(
             name: "MLXLens",
             dependencies: [
                 "Lens",
+                // Explicit MLX link so the wrapper's unload() can call MLX.Memory.clearCache()
+                // (the eviction-frees-RSS rule) without relying on a transitive import.
+                .product(name: "MLX", package: "mlx-swift"),
                 .product(name: "MLXToolKit", package: "mlx-engine-swift"),
             ],
             path: "Sources/MLXLens"

@@ -91,24 +91,81 @@ public enum LensPipeline {
 import Tokenizers
 
 /// Assembled Lens text-to-image pipeline: tokenizer + GPT-OSS encoder + DiT + VAE.
+///
+/// **Per-stage residency (efficiency contract 1.14.0).** The GPT-OSS-20B text encoder
+/// (~40 GB bf16 — the bulk of the old flat 62 GB footprint) is used ONCE per request to
+/// produce the multi-layer text features, then sits idle through the entire DiT denoise
+/// loop and the FLUX.2 VAE decode — the heaviest, longest phase. So the generator does NOT
+/// hold the encoder resident: it owns an async `encoderProvider` (the wrapper's loader),
+/// loads the encoder on demand, encodes, then **evicts it (`nil` + `Memory.clearCache()`)
+/// before the denoise peak**, reclaiming the ~40 GB. Only the 3.8B DiT (the resident floor
+/// + the activation peak) and the small VAE stay resident. Both wrappers (base + Turbo)
+/// share this core, so both inherit the eviction. Tradeoff: the encoder re-loads per
+/// request (cheap encode vs. expensive denoise) — a `keepEncoderResident` flag covers
+/// big-RAM tiers (and the parity tests, which can't reload it).
 public final class LensGenerator {
     public let transformer: LensTransformer2DModel
     public let vae: Flux2VAE
-    public let encoder: LensGptOssEncoder
+    /// Lazy loader for the GPT-OSS-20B encoder. Invoked per request, then evicted before
+    /// the denoise peak (unless `keepEncoderResident`).
+    public let encoderProvider: () async throws -> LensGptOssEncoder
     public let tokenizer: any Tokenizers.Tokenizer
+    /// Keep the encoder resident across requests (skip per-request evict+reload). Default
+    /// `false` = evict-between-stages, the memory-citizen default; `true` on big-RAM tiers.
+    public let keepEncoderResident: Bool
 
+    /// Hot encoder when `keepEncoderResident` is set (avoids the reload each request).
+    private var residentEncoder: LensGptOssEncoder?
+
+    /// Staged init: the encoder is loaded on demand via `encoderProvider`, not held resident.
     public init(
         transformer: LensTransformer2DModel, vae: Flux2VAE,
-        encoder: LensGptOssEncoder, tokenizer: any Tokenizers.Tokenizer
+        encoderProvider: @escaping () async throws -> LensGptOssEncoder,
+        tokenizer: any Tokenizers.Tokenizer,
+        keepEncoderResident: Bool = false
     ) {
         self.transformer = transformer
         self.vae = vae
-        self.encoder = encoder
+        self.encoderProvider = encoderProvider
         self.tokenizer = tokenizer
+        self.keepEncoderResident = keepEncoderResident
     }
 
-    /// Chat-template encode + offset slice -> (CFG-batched features, mask).
-    func encode(prompt: String) -> ([MLXArray], MLXArray) {
+    /// Back-compat init from an already-loaded encoder. The encoder is kept resident (the
+    /// pre-staged behavior) since the caller has no way to reload it. Prefer the
+    /// `encoderProvider` init to get per-stage eviction.
+    public convenience init(
+        transformer: LensTransformer2DModel, vae: Flux2VAE,
+        encoder: LensGptOssEncoder, tokenizer: any Tokenizers.Tokenizer
+    ) {
+        self.init(
+            transformer: transformer, vae: vae, encoderProvider: { encoder },
+            tokenizer: tokenizer, keepEncoderResident: true)
+    }
+
+    /// Obtain the text encoder for this request. Reuses the hot encoder when
+    /// `keepEncoderResident`, otherwise loads a fresh one via `encoderProvider`.
+    private func loadEncoder(isolation: isolated (any Actor)? = #isolation) async throws
+        -> LensGptOssEncoder
+    {
+        if keepEncoderResident, let residentEncoder { return residentEncoder }
+        let encoder = try await encoderProvider()
+        if keepEncoderResident { residentEncoder = encoder }
+        return encoder
+    }
+
+    /// Drop the encoder's weights before the denoise peak. A no-op when keeping it resident;
+    /// otherwise nils the caller's last strong reference and clears the buffer cache,
+    /// reclaiming the ~40 GB before the DiT denoise loop.
+    private func evictEncoder(_ encoder: inout LensGptOssEncoder?) {
+        guard !keepEncoderResident else { return }
+        encoder = nil           // release the encoder's MLXArrays (last strong ref)
+        Memory.clearCache()     // return the freed buffers to the OS before denoise
+    }
+
+    /// Chat-template encode + offset slice -> (CFG-batched features, mask). Uses the
+    /// supplied (per-request) encoder so the caller can evict it before the denoise loop.
+    func encode(prompt: String, encoder: LensGptOssEncoder) -> ([MLXArray], MLXArray) {
         let rendered = LensChatTemplate.render(prompt: prompt)
         let ids = tokenizer.encode(text: rendered, addSpecialTokens: false)
         let idArray = MLXArray(ids.map { Int32($0) }).expandedDimensions(axis: 0)
@@ -127,15 +184,22 @@ public final class LensGenerator {
     /// Returns interleaved RGB uint8 pixels (height × width × 3) in row-major order.
     public func generate(
         prompt: String, height: Int = 1024, width: Int = 1024,
-        numInferenceSteps: Int = 20, guidanceScale: Float = 4.0, seed: UInt64 = 0
-    ) throws -> (pixels: [UInt8], height: Int, width: Int) {
+        numInferenceSteps: Int = 20, guidanceScale: Float = 4.0, seed: UInt64 = 0,
+        isolation: isolated (any Actor)? = #isolation
+    ) async throws -> (pixels: [UInt8], height: Int, width: Int) {
         guard height % LensPipeline.vaeScaleFactor == 0,
               width % LensPipeline.vaeScaleFactor == 0
         else { throw LensError.generation("height/width must be divisible by 16") }
         let latentH = height / LensPipeline.vaeScaleFactor
         let latentW = width / LensPipeline.vaeScaleFactor
 
-        let (enc, mask) = encode(prompt: prompt)
+        // PER-STAGE EVICTION: load the GPT-OSS-20B encoder, encode, force-materialize the
+        // features (`eval`), then drop the encoder + clear the cache BEFORE the denoise loop
+        // so the ~40 GB encoder is not co-resident with the DiT activation peak.
+        var encoderRef: LensGptOssEncoder? = try await loadEncoder()
+        let (enc, mask) = encode(prompt: prompt, encoder: encoderRef!)
+        eval(enc + [mask])         // materialize off the encoder graph
+        evictEncoder(&encoderRef)  // reclaim the ~40 GB before the DiT denoise peak
 
         MLXRandom.seed(seed)
         var latents = MLXRandom.normal(

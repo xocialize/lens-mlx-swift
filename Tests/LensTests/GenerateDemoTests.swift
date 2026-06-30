@@ -26,7 +26,7 @@ final class GenerateDemoTests: XCTestCase {
         let gen = LensGenerator(
             transformer: transformer, vae: vae, encoder: encoder, tokenizer: tokenizer)
         let t1 = Date()
-        let (pixels, h, w) = try gen.generate(
+        let (pixels, h, w) = try await gen.generate(
             prompt: "A serene lake below snow-capped mountains, golden hour.",
             height: 1024, width: 1024, numInferenceSteps: 20, seed: 42)
         print("[DEMO] generated in \(String(format: "%.1f", -t1.timeIntervalSinceNow))s "
