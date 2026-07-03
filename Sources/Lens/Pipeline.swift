@@ -5,6 +5,7 @@
 
 import Foundation
 import MLX
+import MLXProfiling
 import MLXRandom
 import Flux2VAE
 
@@ -57,7 +58,11 @@ public enum LensPipeline {
         let scheduler = FlowMatchEulerDiscreteScheduler()
         scheduler.setTimesteps(sigmas: sigmas, mu: Double(mu))
 
-        for t in scheduler.timesteps {
+        for (i, t) in scheduler.timesteps.enumerated() {
+            // Per-step span (MLX_PROFILE=1) bounded by the loop's existing `eval(latents)` —
+            // the lazy DiT+CFG compute realizes there, so the interval is timed honestly.
+            let span = MLXProfiler.shared.begin("denoise", "step", index: i,
+                note: String(format: "t=%.3f", t / 1000.0))
             let hiddenStates = concatenated([latents, latents], axis: 0)
             let timestep = MLXArray(
                 [Float](repeating: Float(t / 1000.0), count: hiddenStates.dim(0)))
@@ -67,6 +72,7 @@ public enum LensPipeline {
             let noisePred = lensCFG(noise, guidanceScale: guidanceScale)
             latents = scheduler.step(modelOutput: noisePred, sample: latents)
             eval(latents)
+            MLXProfiler.shared.end(span)
         }
         return latents
     }
@@ -196,9 +202,17 @@ public final class LensGenerator {
         // PER-STAGE EVICTION: load the GPT-OSS-20B encoder, encode, force-materialize the
         // features (`eval`), then drop the encoder + clear the cache BEFORE the denoise loop
         // so the ~40 GB encoder is not co-resident with the DiT activation peak.
+        // Stage spans (MLX_PROFILE=1): the encoder load is a per-request stage by design
+        // (per-stage eviction), and `fromPretrained` `eval`s the model — an existing eval
+        // boundary; the features span is bounded by the existing `eval(enc + [mask])`.
+        let prof = MLXProfiler.shared
+        let loadSpan = prof.begin("encode", "loadEncoder")
         var encoderRef: LensGptOssEncoder? = try await loadEncoder()
+        prof.end(loadSpan)
+        let featSpan = prof.begin("encode", "features")
         let (enc, mask) = encode(prompt: prompt, encoder: encoderRef!)
         eval(enc + [mask])         // materialize off the encoder graph
+        prof.end(featSpan)
         evictEncoder(&encoderRef)  // reclaim the ~40 GB before the DiT denoise peak
 
         MLXRandom.seed(seed)
@@ -213,6 +227,9 @@ public final class LensGenerator {
             imgShape: (1, latentH, latentW),
             numInferenceSteps: numInferenceSteps, guidanceScale: guidanceScale)
 
+        // Manual span around the existing `eval(img)` — pack + VAE decode are lazy; their
+        // compute realizes at that eval.
+        let vaeSpan = prof.begin("vae", "decode")
         let packed = LensPipeline.packLatentsForDecode(
             latents.asType(.float32), latentH: latentH, latentW: latentW)
         var img = vae.decodePackedLatents(packed)  // [1, 3, H, W] in [-1, 1]
@@ -220,6 +237,7 @@ public final class LensGenerator {
         img = (img + 1) * 127.5
         img = img[0].transposed(1, 2, 0)  // [H, W, 3]
         eval(img)
+        prof.end(vaeSpan)
         let pixels = img.asType(.uint8).asArray(UInt8.self)
         return (pixels, height, width)
     }

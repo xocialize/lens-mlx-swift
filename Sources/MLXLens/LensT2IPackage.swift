@@ -10,6 +10,7 @@ import Foundation
 import ImageIO
 import Lens
 import MLX
+import MLXProfiling
 import MLXToolKit
 import Tokenizers
 import UniformTypeIdentifiers
@@ -190,14 +191,23 @@ public final class LensT2IPackage: ModelPackage {
         }
         try Task.checkCancellation()
 
+        // Stage-level MLX profiling (MLX_PROFILE=1): encoder-load/encode + per-step denoise +
+        // VAE-decode spans live in the Core; the run summary normalizes to ms/step. beginRun
+        // sits AFTER load() built the resident DiT+VAE — the per-request GPT-OSS encoder load
+        // inside generate IS part of the run (per-stage eviction) and is timed as a stage.
+        let steps = t2i.steps ?? configuration.defaultSteps
+        let (height, width) = (t2i.height ?? 1024, t2i.width ?? 1024)
+        let prof = MLXProfiler.shared
+        prof.beginRun("lens textToImage steps=\(steps) \(width)x\(height)")
         let (pixels, h, w) = try await generator.generate(
             prompt: t2i.prompt,
-            height: t2i.height ?? 1024,
-            width: t2i.width ?? 1024,
-            numInferenceSteps: t2i.steps ?? configuration.defaultSteps,
+            height: height,
+            width: width,
+            numInferenceSteps: steps,
             guidanceScale: t2i.guidanceScale.map(Float.init)
                 ?? configuration.defaultGuidanceScale,
             seed: t2i.seed ?? 0)
+        prof.endRun(denominators: ["step": Double(steps)])
 
         try Task.checkCancellation()
         let png = try Self.encodePNG(pixels: pixels, width: w, height: h)

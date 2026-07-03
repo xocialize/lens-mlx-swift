@@ -27,6 +27,8 @@ let package = Package(
         // MLXEngine contract (MLXToolKit) for the wrapper target only; the core `Lens`
         // target stays engine-agnostic.
         .package(url: "https://github.com/xocialize/mlx-engine-swift", from: "0.3.0"),
+        // Shared env-gated performance instrument (MLX_PROFILE=1); zero overhead when unset.
+        .package(url: "https://github.com/xocialize/mlx-profiling.git", from: "0.1.0"),
     ],
     targets: [
         .target(
@@ -40,6 +42,7 @@ let package = Package(
                 .product(name: "Tokenizers", package: "swift-transformers"),
                 .product(name: "Hub", package: "swift-transformers"),
                 .product(name: "Flux2VAE", package: "flux2-vae-mlx-swift"),
+                .product(name: "MLXProfiling", package: "mlx-profiling"),
             ],
             path: "Sources/Lens"
         ),
@@ -51,6 +54,7 @@ let package = Package(
                 // (the eviction-frees-RSS rule) without relying on a transitive import.
                 .product(name: "MLX", package: "mlx-swift"),
                 .product(name: "MLXToolKit", package: "mlx-engine-swift"),
+                .product(name: "MLXProfiling", package: "mlx-profiling"),
             ],
             path: "Sources/MLXLens"
         ),
