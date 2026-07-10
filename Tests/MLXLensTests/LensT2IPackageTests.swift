@@ -9,7 +9,11 @@ final class LensT2IPackageTests: XCTestCase {
         XCTAssertEqual(m.surfaces.count, 1)
         XCTAssertEqual(m.surfaces[0].capability, .textToImage)
         XCTAssertEqual(m.surfaces[0].name, "lens-t2i")
-        XCTAssertTrue(m.requirements.footprints.contains { $0.residentBytes > 50_000_000_000 })
+        // Split footprint (efficiency contract 1.14): ~8 GB resident DiT+VAE floor, the
+        // GPT-OSS encoder + denoise scratch ride peakActivationBytes (~54 GB).
+        XCTAssertTrue(m.requirements.footprints.contains {
+            $0.residentBytes >= 8_000_000_000 && $0.peakActivationBytes >= 50_000_000_000
+        })
     }
 
     func testConfigurationDefaults() {

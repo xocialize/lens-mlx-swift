@@ -185,11 +185,15 @@ public final class LensT2IPackage: ModelPackage {
     }
 
     public func run(_ request: any CapabilityRequest) async throws -> any CapabilityResponse {
+        // CAN-1: the entry checkpoint is the FIRST act of run() — before notLoaded validation
+        // (engine ≥ 0.27.0). Mid-run cadence: post-encode + pre-decode seams in
+        // LensGenerator.generate and a per-denoise-step `Task.isCancelled` break in
+        // LensPipeline.denoise; CancellationError is rethrown unchanged.
+        try Task.checkCancellation()
         guard let generator else { throw PackageError.notLoaded }
         guard request.capability == .textToImage, let t2i = request as? T2IRequest else {
             throw PackageError.unsupportedCapability(request.capability)
         }
-        try Task.checkCancellation()
 
         // Stage-level MLX profiling (MLX_PROFILE=1): encoder-load/encode + per-step denoise +
         // VAE-decode spans live in the Core; the run summary normalizes to ms/step. beginRun

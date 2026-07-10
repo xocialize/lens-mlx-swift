@@ -25,8 +25,9 @@ let package = Package(
         // FLUX.2 VAE — neutral package shared with other t2i backers (ERNIE-Image); net dep.
         .package(url: "https://github.com/xocialize/flux2-vae-mlx-swift", from: "0.1.0"),
         // MLXEngine contract (MLXToolKit) for the wrapper target only; the core `Lens`
-        // target stays engine-agnostic.
-        .package(url: "https://github.com/xocialize/mlx-engine-swift", from: "0.3.0"),
+        // target stays engine-agnostic. ≥0.27.0 for the CAN cancellation gate
+        // (MLXServeConformance.CancellationConformance).
+        .package(url: "https://github.com/xocialize/mlx-engine-swift", from: "0.27.0"),
         // Shared env-gated performance instrument (MLX_PROFILE=1); zero overhead when unset.
         .package(url: "https://github.com/xocialize/mlx-profiling.git", from: "0.1.0"),
     ],
@@ -75,7 +76,11 @@ let package = Package(
         ),
         .testTarget(
             name: "MLXLensTests",
-            dependencies: ["MLXLens"],
+            dependencies: [
+                "MLXLens",
+                // The engine's executable CAN gate, run from this package's own suite.
+                .product(name: "MLXServeConformance", package: "mlx-engine-swift"),
+            ],
             path: "Tests/MLXLensTests"
         ),
     ]

@@ -59,6 +59,9 @@ public enum LensPipeline {
         scheduler.setTimesteps(sigmas: sigmas, mu: Double(mu))
 
         for (i, t) in scheduler.timesteps.enumerated() {
+            // Cooperative cancellation: bail per denoise step (non-throwing core API — the
+            // throwing seams in LensGenerator.generate / the MLXLens wrapper rethrow).
+            if Task.isCancelled { break }
             // Per-step span (MLX_PROFILE=1) bounded by the loop's existing `eval(latents)` —
             // the lazy DiT+CFG compute realizes there, so the interval is timed honestly.
             let span = MLXProfiler.shared.begin("denoise", "step", index: i,
@@ -214,6 +217,8 @@ public final class LensGenerator {
         eval(enc + [mask])         // materialize off the encoder graph
         prof.end(featSpan)
         evictEncoder(&encoderRef)  // reclaim the ~40 GB before the DiT denoise peak
+        // CAN seam: prompt encoding done (encoder evicted), before the denoise loop.
+        try Task.checkCancellation()
 
         MLXRandom.seed(seed)
         var latents = MLXRandom.normal(
@@ -226,6 +231,10 @@ public final class LensGenerator {
             encoderMask: mask,
             imgShape: (1, latentH, latentW),
             numInferenceSteps: numInferenceSteps, guidanceScale: guidanceScale)
+
+        // CAN seam: denoise done (or bailed per step on cancel), before the monolithic VAE
+        // decode (one MLX eval) — rethrows CancellationError unchanged.
+        try Task.checkCancellation()
 
         // Manual span around the existing `eval(img)` — pack + VAE decode are lazy; their
         // compute realizes at that eval.
