@@ -7,6 +7,7 @@ import MLX
 /// Goldens: fp32/CPU capture from the PT reference (512×512, 4 steps, seed 42) —
 /// the same oracle the Python port locked against.
 final class GoldenParityTests: XCTestCase {
+    override func invokeTest() { withMLXCPU { super.invokeTest() } }
     static let goldens = URL(fileURLWithPath:
         "/Volumes/DEV_VOL1/VideoResearch/lens-mlx-models/goldens/lens_goldens.safetensors")
     static let ptTransformer = URL(fileURLWithPath:
@@ -24,8 +25,6 @@ final class GoldenParityTests: XCTestCase {
     func testFullDiTParity() throws {
         try XCTSkipUnless(
             ProcessInfo.processInfo.environment["LENS_PARITY"] == "1", "LENS_PARITY=1")
-        Device.setDefault(device: Device.cpu)
-
         let g = try MLX.loadArrays(url: Self.goldens)
         let hidden = g["dit_in_hidden"]!.asType(.float32)            // [2,1024,128]
         let timestep = g["dit_in_timestep"]!.asType(.float32)        // [2]
@@ -58,8 +57,6 @@ final class GoldenParityTests: XCTestCase {
     func testVAEDecodeParity() throws {
         try XCTSkipUnless(
             ProcessInfo.processInfo.environment["LENS_PARITY"] == "1", "LENS_PARITY=1")
-        Device.setDefault(device: Device.cpu)
-
         let g = try MLX.loadArrays(url: Self.goldens)
         let latents = g["final_latent"]!.asType(.float32)            // [1,1024,128]
         let ref = g["decoded_image"]!.asType(.float32)               // [1,3,512,512]
