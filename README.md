@@ -31,3 +31,20 @@ checkouts.
 
 Gates: `LENS_PARITY=1 / LENS_E2E=1 swift test` (XCTest; goldens at
 `VideoResearch/lens-mlx-models/goldens/`).
+
+## Run-phase progress (v0.3.1, AB-A-0139)
+
+The packages report into the engine's `RunProgress` plane (contract 1.18.0), so a host shows
+`denoise 5/8` instead of an unexplained "running". The phases, in order:
+
+| phase | covers | steps? |
+|---|---|---|
+| `encode` | GPT-OSS-20B conditioning, including the per-request encoder load (evicted before the denoise peak) | no |
+| `denoise` | the flow-matching Euler loop: once at loop entry with no step, then after each completed step | **yes** — `step i/N`, 1-based |
+| `decode` | FLUX.2 VAE decode — one eval, so no per-chunk counts | no |
+| `postprocess` | PNG encode (reported by the wrapper, after the model is done) | no |
+
+The core stays engine-free: `Lens` reports into its own `LensProgress` task-local sink, and
+`MLXLens` forwards those events into `RunProgress` (`LensProgressBridge`). Nothing bound ⇒ no-op, so the
+CLI and the parity gates run unchanged. A host binds a sink around `engine.run` (contract 1.51.0)
+or reads `engine.runProgress`.

@@ -58,6 +58,8 @@ public enum LensPipeline {
         let scheduler = FlowMatchEulerDiscreteScheduler()
         scheduler.setTimesteps(sigmas: sigmas, mu: Double(mu))
 
+        let totalSteps = scheduler.timesteps.count
+        LensProgress.report(.denoise)
         for (i, t) in scheduler.timesteps.enumerated() {
             // Cooperative cancellation: bail per denoise step (non-throwing core API — the
             // throwing seams in LensGenerator.generate / the MLXLens wrapper rethrow).
@@ -76,6 +78,7 @@ public enum LensPipeline {
             latents = scheduler.step(modelOutput: noisePred, sample: latents)
             eval(latents)
             MLXProfiler.shared.end(span)
+            LensProgress.report(.denoise, step: i + 1, totalSteps: totalSteps)
         }
         return latents
     }
@@ -209,6 +212,7 @@ public final class LensGenerator {
         // (per-stage eviction), and `fromPretrained` `eval`s the model — an existing eval
         // boundary; the features span is bounded by the existing `eval(enc + [mask])`.
         let prof = MLXProfiler.shared
+        LensProgress.report(.encode)
         let loadSpan = prof.begin("encode", "loadEncoder")
         var encoderRef: LensGptOssEncoder? = try await loadEncoder()
         prof.end(loadSpan)
@@ -238,6 +242,7 @@ public final class LensGenerator {
 
         // Manual span around the existing `eval(img)` — pack + VAE decode are lazy; their
         // compute realizes at that eval.
+        LensProgress.report(.decode)
         let vaeSpan = prof.begin("vae", "decode")
         let packed = LensPipeline.packLatentsForDecode(
             latents.asType(.float32), latentH: latentH, latentW: latentW)

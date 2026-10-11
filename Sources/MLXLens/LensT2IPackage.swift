@@ -88,6 +88,20 @@ public enum LensT2IError: Error, LocalizedError {
     }
 }
 
+/// Forwards the core's ambient phase events into the engine's `RunProgress` plane (contract
+/// 1.18.0, ENGINE-NEEDS V2; AB-A-0139). The engine binds `RunProgress.sink` as a task-local
+/// around `run()`; the core reports into its own engine-free `LensProgress` sink, and this
+/// closure joins the two. The core's phase names ARE the canonical `RunPhase` constants, so raw
+/// values forward with no mapping table.
+///
+/// Namespaced rather than inlined so the offline suite can exercise the mapping without weights.
+enum LensProgressBridge {
+    static let forward: LensProgress.Sink = { e in
+        RunProgress.report(RunPhase(rawValue: e.phase.rawValue),
+                           step: e.step, totalSteps: e.totalSteps)
+    }
+}
+
 @InferenceActor
 public final class LensT2IPackage: ModelPackage {
     public typealias Configuration = LensConfiguration
@@ -189,6 +203,8 @@ public final class LensT2IPackage: ModelPackage {
         // (engine ≥ 0.27.0). Mid-run cadence: post-encode + pre-decode seams in
         // LensGenerator.generate and a per-denoise-step `Task.isCancelled` break in
         // LensPipeline.denoise; CancellationError is rethrown unchanged.
+        // Progress: the core reports encode → denoise (per step) → decode into LensProgress,
+        // bound below for exactly this generation; the PNG encode is reported as postprocess.
         try Task.checkCancellation()
         guard let generator else { throw PackageError.notLoaded }
         guard request.capability == .textToImage, let t2i = request as? T2IRequest else {
@@ -203,17 +219,20 @@ public final class LensT2IPackage: ModelPackage {
         let (height, width) = (t2i.height ?? 1024, t2i.width ?? 1024)
         let prof = MLXProfiler.shared
         prof.beginRun("lens textToImage steps=\(steps) \(width)x\(height)")
-        let (pixels, h, w) = try await generator.generate(
-            prompt: t2i.prompt,
-            height: height,
-            width: width,
-            numInferenceSteps: steps,
-            guidanceScale: t2i.guidanceScale.map(Float.init)
-                ?? configuration.defaultGuidanceScale,
-            seed: t2i.seed ?? 0)
+        let (pixels, h, w) = try await LensProgress.$sink.withValue(LensProgressBridge.forward) {
+            try await generator.generate(
+                prompt: t2i.prompt,
+                height: height,
+                width: width,
+                numInferenceSteps: steps,
+                guidanceScale: t2i.guidanceScale.map(Float.init)
+                    ?? configuration.defaultGuidanceScale,
+                seed: t2i.seed ?? 0)
+        }
         prof.endRun(denominators: ["step": Double(steps)])
 
         try Task.checkCancellation()
+        RunProgress.report(.postprocess)
         let png = try Self.encodePNG(pixels: pixels, width: w, height: h)
         return T2IResponse(image: Image(format: .png, data: png, width: w, height: h))
     }
